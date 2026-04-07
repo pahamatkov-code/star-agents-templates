@@ -147,3 +147,47 @@ def purchase_agent(agent_id: int,
 def get_my_purchases(db: Session = Depends(get_db),
                      current_user: User = Depends(get_current_user)):
     return db.query(Purchase).filter(Purchase.user_id == current_user.id).all()
+
+# Додай імпорти на початку файлу
+from app.services.ai_service import ask_agent
+from app.schemas import ChatMessage, ChatResponse
+
+# Додай в кінець файлу
+@router.post("/{agent_id}/chat", response_model=ChatResponse)
+def chat_with_agent(
+    agent_id: int,
+    chat: ChatMessage,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Відправити повідомлення AI-агенту і отримати відповідь.
+    """
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if not agent.status:
+        raise HTTPException(status_code=400, detail="Agent is inactive")
+
+    try:
+        response_text = ask_agent(
+            message=chat.message,
+            agent_name=agent.name,
+            role=agent.role,
+            skills=agent.skills
+        )
+
+        return ChatResponse(
+            agent_id=agent.id,
+            agent_name=agent.name,
+            message=chat.message,
+            response=response_text,
+            status="success"
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Помилка AI агента: {str(e)}"
+        )

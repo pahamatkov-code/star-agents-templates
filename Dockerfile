@@ -1,29 +1,20 @@
-# Базовий образ — Python 3.12 slim (легкий, швидкий, безпечний)
+# Використовуємо офіційний Python-образ
 FROM python:3.12-slim
 
-# Встановлюємо системні залежності (потрібні для деяких pip-пакетів)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Робоча директорія
+# Встановлюємо робочу директорію
 WORKDIR /app
 
-# Спочатку залежності — для кешування шару
+# Копіюємо файл залежностей
 COPY requirements.txt .
 
-# Встановлюємо пакети без кешу (менший розмір образу)
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir uvicorn[standard] httptools uvloop
+# Встановлюємо залежності
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Копіюємо весь код
+# Копіюємо весь код агента
 COPY . .
 
 # Відкриваємо порт
 EXPOSE 8000
 
-# Запуск Uvicorn у production-режимі
-# workers = 4 (можна динамічно через env)
-# --no-access-log — зменшує логи
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--no-access-log"]
+# Команда запуску
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

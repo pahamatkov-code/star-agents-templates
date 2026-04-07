@@ -78,3 +78,15 @@ class PurchaseData(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+# === ЧАТ З АГЕНТОМ ===
+class ChatMessage(BaseModel):
+    message: str
+    customer_id: Optional[str] = None
+
+class ChatResponse(BaseModel):
+    agent_id: int
+    agent_name: str
+    message: str
+    response: str
+    status: str = "success"
