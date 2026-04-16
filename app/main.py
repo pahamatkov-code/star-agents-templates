@@ -1,61 +1,73 @@
+from app.core.config import settings
+print(">>> USING DATABASE:", settings.DATABASE_URL)
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 import shutil
 
-# Імпорти бази та моделей
-from app.database import Base, engine
-from app import models
-from app.routers import auth, users, agents, purchases
-
-# Ініціалізація FastAPI
+# === Ініціалізація FastAPI ===
 app = FastAPI(
     title="Star Agents API",
     version="1.0.0",
-    description="API для керування користувачами, агентами та покупками"
+    description="API для керування користувачами, агентами, покупками та балансом",
+    debug=settings.DEBUG
 )
 
-# Створюємо таблиці у БД
-Base.metadata.create_all(bind=engine)
+# === STATIC FILES ===
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# Підключаємо роутери
-app.include_router(auth.router, tags=["Auth"])
-app.include_router(users.router, tags=["Users"])
-app.include_router(agents.router, tags=["Agents"])
-app.include_router(purchases.router, tags=["Purchases"])
+# === API ROUTERS ===
+from app.api.v1.auth import router as auth_router
+from app.api.v1.users import router as users_router
+from app.api.v1.agents import router as agents_router
+from app.api.v1.purchases import router as purchases_router
+from app.api.v1.balance import router as balance_router
+from app.api.v1.analytics import router as analytics_router
+from app.api.v1.seed import router as seed_router   # <-- seed тут
 
-# Jinja2 templates (залишаємо для інших сторінок)
+app.include_router(auth_router)
+app.include_router(users_router)
+app.include_router(agents_router)
+app.include_router(purchases_router)
+app.include_router(balance_router)
+app.include_router(analytics_router)
+app.include_router(seed_router)   # <-- і тут
+
+# === Jinja2 templates ===
 templates = Jinja2Templates(directory="templates")
 
+# === SYSTEM ROUTES ===
+@app.get("/health")
+def health():
+    return {"status": "ok", "debug": settings.DEBUG}
+
 # === FRONTEND ROUTES ===
-# Головна сторінка → login.html
 @app.get("/", response_class=HTMLResponse)
 def landing_page():
     return FileResponse("static/login.html")
 
-# Редирект з /login на /
 @app.get("/login")
 def login_redirect():
     return RedirectResponse(url="/")
 
-# Сторінка агентів → agents.html
 @app.get("/agents", response_class=HTMLResponse)
 def agents_page():
     return FileResponse("static/agents.html")
 
-# Сторінка покупок → purchases.html
 @app.get("/purchases", response_class=HTMLResponse)
 def purchases_page():
     return FileResponse("static/purchases.html")
 
-# Тестовий upload
+# === Upload ===
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     with open(f"uploaded_{file.filename}", "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     return {"detail": f"File {file.filename} uploaded successfully"}
 
-# Демонстраційні агенти
+# === Demo agents ===
 @app.get("/featured_agents")
 def featured_agents():
     return [

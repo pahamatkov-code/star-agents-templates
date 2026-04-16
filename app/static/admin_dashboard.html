@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f6fa;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 25px;
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        #login-box, #dashboard {
+            width: 90%;
+            max-width: 900px;
+            margin: 30px auto;
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px #ccc;
+        }
+
+        input, button {
+            padding: 10px;
+            margin: 5px 0;
+            width: 100%;
+            font-size: 16px;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        .chart-container {
+            margin-top: 30px;
+        }
+
+        canvas {
+            width: 100% !important;
+            max-height: 350px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #ecf0f1;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<header>Admin Dashboard</header>
+
+<!-- LOGIN BOX -->
+<div id="login-box">
+    <h2>Вхід</h2>
+    <input id="email" type="text" placeholder="Email" value="admin@example.com">
+    <input id="password" type="password" placeholder="Пароль" value="admin123">
+    <button onclick="login()">Увійти</button>
+    <p id="login-status" style="color:red;"></p>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" style="display:none;">
+    <h2>Вітаю, <span id="user-email"></span></h2>
+
+    <button onclick="logout()" style="background:#e74c3c;">Вийти</button>
+
+    <div class="chart-container">
+        <h3>Покупки по днях</h3>
+        <canvas id="purchasesChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <h3>Баланс користувачів</h3>
+        <canvas id="balanceChart"></canvas>
+    </div>
+
+    <h3>Останні покупки</h3>
+    <table id="purchases-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>User</th>
+                <th>Agent</th>
+                <th>Amount</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+</div>
+
+<script>
+const API = "http://127.0.0.1:8000";
+
+function login() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+
+    fetch(`${API}/auth/login`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email, password})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.access_token) {
+            localStorage.setItem("token", data.access_token);
+            document.getElementById("login-box").style.display = "none";
+            document.getElementById("dashboard").style.display = "block";
+            document.getElementById("user-email").innerText = email;
+            loadDashboard();
+        } else {
+            document.getElementById("login-status").innerText = "Невірний логін або пароль";
+        }
+    });
+}
+
+function logout() {
+    localStorage.removeItem("token");
+    location.reload();
+}
+
+function authHeaders() {
+    return {
+        "Authorization": "Bearer " + localStorage.getItem("token")
+    };
+}
+
+function loadDashboard() {
+    loadPurchasesChart();
+    loadBalanceChart();
+    loadPurchasesTable();
+}
+
+function loadPurchasesChart() {
+    fetch(`${API}/analytics/purchases`, { headers: authHeaders() })
+        .then(r => r.json())
+        .then(data => {
+            const ctx = document.getElementById("purchasesChart");
+
+            new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: data.map(x => x.date),
+                    datasets: [{
+                        label: "Кількість покупок",
+                        data: data.map(x => x.count),
+                        borderColor: "#3498db",
+                        borderWidth: 2
+                    }]
+                }
+            });
+        });
+}
+
+function loadBalanceChart() {
+    fetch(`${API}/analytics/balance`, { headers: authHeaders() })
+        .then(r => r.json())
+        .then(data => {
+            const ctx = document.getElementById("balanceChart");
+
+            new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: data.map(x => x.user),
+                    datasets: [{
+                        label: "Баланс",
+                        data: data.map(x => x.balance),
+                        backgroundColor: "#2ecc71"
+                    }]
+                }
+            });
+        });
+}
+
+function loadPurchasesTable() {
+    fetch(`${API}/analytics/purchases`, { headers: authHeaders() })
+        .then(r => r.json())
+        .then(data => {
+            const tbody = document.querySelector("#purchases-table tbody");
+            tbody.innerHTML = "";
+
+            data.forEach(row => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${row.id}</td>
+                    <td>${row.user}</td>
+                    <td>${row.agent}</td>
+                    <td>${row.amount}</td>
+                    <td>${row.date}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        });
+}
+</script>
+
+</body>
+</html>

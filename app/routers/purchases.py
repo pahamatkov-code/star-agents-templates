@@ -1,59 +1,75 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
 
-from app import crud, schemas, models
 from app.database import get_db
-from app.routers.auth import get_current_user
+from app.schemas.purchase import PurchaseCreate, PurchaseRead, PurchaseData
+from app.services.purchase_service import PurchaseService
+from app.core.deps import get_current_user, require_role
+from app.models import User
 
-router = APIRouter(prefix="/purchases", tags=["Purchases"])
-
-
-# === Створення покупки ===
-@router.post("/", response_model=schemas.Purchase)
-def create_purchase(purchase: schemas.PurchaseCreate, db: Session = Depends(get_db)):
-    agent = db.query(models.Agent).filter(models.Agent.id == purchase.agent_id).first()
-    user = db.query(models.User).filter(models.User.id == purchase.user_id).first()
-
-    if not agent or not user:
-        raise HTTPException(status_code=404, detail="User or Agent not found")
-
-    return crud.create_purchase(db=db, purchase=purchase)
+router = APIRouter(
+    prefix="/purchases",
+    tags=["Purchases"],
+)
 
 
-# === Перегляд усіх покупок (адмін) ===
-@router.get("/", response_model=List[schemas.Purchase])
-def read_purchases(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    purchases = crud.get_purchases(db, skip=skip, limit=limit)
-    return purchases
+# === Створення покупки (USER) ===
+@router.post("/", response_model=PurchaseRead, status_code=status.HTTP_201_CREATED)
+def create_purchase(
+    data: PurchaseCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Створює покупку від імені поточного користувача.
+    user_id береться з JWT.
+    """
+    service = PurchaseService(db)
+    data.user_id = user.id
+    return service.create_purchase(data)
 
 
-# === Перегляд покупок поточного користувача ===
-@router.get("/me", response_model=List[schemas.PurchaseData])
-def read_my_purchases(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    purchases = db.query(models.Purchase).filter(models.Purchase.user_id == current_user.id).all()
-
-    result = []
-    for p in purchases:
-        result.append(
-            schemas.PurchaseData(
-                id=p.id,
-                agent_id=p.agent_id,
-                timestamp=p.timestamp,
-                agent_name=p.agent.name if p.agent else None,
-                agent_role=p.agent.role if p.agent else None,
-            )
-        )
-    return result
+# === Перегляд покупок поточного користувача (USER) ===
+@router.get("/me", response_model=List[PurchaseData])
+def get_my_purchases(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Повертає покупки поточного користувача.
+    """
+    service = PurchaseService(db)
+    return service.get_purchases_by_user(user.id)
 
 
-# === Видалення покупки ===
-@router.delete("/{purchase_id}", response_model=schemas.Purchase)
-def delete_purchase(purchase_id: int, db: Session = Depends(get_db)):
-    purchase = db.query(models.Purchase).filter(models.Purchase.id == purchase_id).first()
-    if not purchase:
+# === Перегляд усіх покупок (ADMIN) ===
+@router.get("/", response_model=List[PurchaseRead], dependencies=[Depends(require_role("admin"))])
+def get_all_purchases(
+    db: Session = Depends(get_db),
+):
+    """
+    Повертає всі покупки.
+    Доступно тільки для admin.
+    """
+    service = PurchaseService(db)
+    return service.get_all_purchases()
+
+
+# === Видалення покупки (ADMIN) ===
+@router.delete("/{purchase_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_role("admin"))])
+def delete_purchase(
+    purchase_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Видаляє покупку.
+    Доступно тільки для admin.
+    """
+    service = PurchaseService(db)
+    deleted = service.delete_purchase(purchase_id)
+
+    if not deleted:
         raise HTTPException(status_code=404, detail="Purchase not found")
 
-    db.delete(purchase)
-    db.commit()
-    return purchase
+    return None
