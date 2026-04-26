@@ -1,25 +1,36 @@
 from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime
 
+
+# Базова схема — спільні поля
 class AgentBase(BaseModel):
     name: str
-    role: str | None = None
-    email: str | None = None
-    department: str | None = None
-    skills: str | None = None
-    status: bool = True
+    role: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    skills: Optional[str] = None
+    status: Optional[str] = "active"   # у моделі це TEXT/VARCHAR
+    price: Optional[float] = 0.0       # у моделі є поле price
 
+
+# Створення агента
 class AgentCreate(AgentBase):
-    pass
+    name: str
 
+
+# Оновлення агента
 class AgentUpdate(BaseModel):
-    name: str | None = None
-    role: str | None = None
-    email: str | None = None
-    department: str | None = None
-    skills: str | None = None
-    status: bool | None = None
+    name: Optional[str] = None
+    role: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    skills: Optional[str] = None
+    status: Optional[str] = None
+    price: Optional[float] = None
 
+
+# Відповідь API
 class AgentRead(AgentBase):
     id: int
     created_at: datetime

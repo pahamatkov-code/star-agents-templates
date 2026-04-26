@@ -1,8 +1,9 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
 from app.db.base_class import Base
+
 
 class Agent(Base):
     __tablename__ = "agents"
@@ -15,10 +16,11 @@ class Agent(Base):
     skills = Column(String, nullable=True)
     status = Column(Boolean, default=True)
     price = Column(Integer, default=0)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    user = relationship("User", back_populates="agents")
+    # ❗ ВАЖЛИВО: НІЯКОГО user_id тут НЕМАЄ
+    # Зв’язок з User відбувається через Purchase
 
     purchases = relationship("Purchase", back_populates="agent")

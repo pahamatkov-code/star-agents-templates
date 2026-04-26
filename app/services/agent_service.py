@@ -1,45 +1,66 @@
 from sqlalchemy.orm import Session
-from app.models import Agent
+
+from app.models.agent import Agent
 from app.schemas.agent import AgentCreate, AgentUpdate
 
 
 class AgentService:
+    def __init__(self, db: Session):
+        self.db = db
 
-    @staticmethod
-    def get_all(db: Session):
-        return db.query(Agent).all()
+    # ---------------------------
+    # GET ALL AGENTS
+    # ---------------------------
+    def get_all(self):
+        return self.db.query(Agent).all()
 
-    @staticmethod
-    def get_by_id(db: Session, agent_id: int):
-        return db.query(Agent).filter(Agent.id == agent_id).first()
+    # ---------------------------
+    # GET ONE AGENT
+    # ---------------------------
+    def get(self, agent_id: int):
+        return self.db.query(Agent).filter(Agent.id == agent_id).first()
 
-    @staticmethod
-    def create(db: Session, data: AgentCreate):
-        agent = Agent(**data.dict())
-        db.add(agent)
-        db.commit()
-        db.refresh(agent)
+    # ---------------------------
+    # CREATE AGENT
+    # ---------------------------
+    def create(self, data: AgentCreate):
+        agent = Agent(
+            name=data.name,
+            role=data.role,
+            email=data.email,
+            department=data.department,
+            skills=data.skills,
+            status=data.status,
+            price=data.price
+        )
+        self.db.add(agent)
+        self.db.commit()
+        self.db.refresh(agent)
         return agent
 
-    @staticmethod
-    def update(db: Session, agent_id: int, data: AgentUpdate):
-        agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    # ---------------------------
+    # UPDATE AGENT
+    # ---------------------------
+    def update(self, agent_id: int, data: AgentUpdate):
+        agent = self.get(agent_id)
         if not agent:
             return None
 
-        for key, value in data.dict(exclude_unset=True).items():
-            setattr(agent, key, value)
+        for field, value in data.dict(exclude_unset=True).items():
+            setattr(agent, field, value)
 
-        db.commit()
-        db.refresh(agent)
+        self.db.commit()
+        self.db.refresh(agent)
         return agent
 
-    @staticmethod
-    def delete(db: Session, agent_id: int):
-        agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    # ---------------------------
+    # DELETE AGENT
+    # ---------------------------
+    def delete(self, agent_id: int):
+        agent = self.get(agent_id)
         if not agent:
             return False
 
-        db.delete(agent)
-        db.commit()
+        self.db.delete(agent)
+        self.db.commit()
         return True

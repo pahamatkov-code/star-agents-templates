@@ -1,33 +1,49 @@
 from sqlalchemy.orm import Session
-from app.models import User, BalanceTransaction
+
+from app.models.user import User
+from app.models.balance_transaction import BalanceTransaction
 
 
 class BalanceService:
+    def __init__(self, db: Session):
+        self.db = db
 
-    @staticmethod
-    def topup(db: Session, user_id: int, amount: float):
-        user = db.query(User).filter(User.id == user_id).first()
+    # ---------------------------
+    # GET USER BALANCE
+    # ---------------------------
+    def get_balance(self, user_id: int):
+        user = self.db.query(User).filter(User.id == user_id).first()
+        return user.balance if user else None
+
+    # ---------------------------
+    # ADD FUNDS
+    # ---------------------------
+    def add_funds(self, user_id: int, amount: float):
+        user = self.db.query(User).filter(User.id == user_id).first()
         if not user:
-            raise ValueError("User not found")
+            return None, "User not found"
 
         user.balance += amount
 
-        tx = BalanceTransaction(
+        transaction = BalanceTransaction(
             user_id=user.id,
             amount=amount,
-            type="topup"
+            type="deposit"
         )
+        self.db.add(transaction)
 
-        db.add(tx)
-        db.commit()
-        db.refresh(user)
+        self.db.commit()
+        self.db.refresh(user)
 
-        return user
+        return user, None
 
-    @staticmethod
-    def get_balance(db: Session, user_id: int):
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise ValueError("User not found")
-
-        return user.balance
+    # ---------------------------
+    # GET TRANSACTION HISTORY
+    # ---------------------------
+    def get_transactions(self, user_id: int):
+        return (
+            self.db.query(BalanceTransaction)
+            .filter(BalanceTransaction.user_id == user_id)
+            .order_by(BalanceTransaction.created_at.desc())
+            .all()
+        )

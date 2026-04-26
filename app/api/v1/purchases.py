@@ -1,78 +1,86 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db, get_current_user, require_role
-from app.schemas.purchase import PurchaseCreate, PurchaseRead
+from app.models.user import User
+from app.schemas.purchase import PurchaseCreate, PurchaseRead, PurchaseUpdate, PurchaseData
 from app.services.purchase_service import PurchaseService
-from app.models import User
 
-router = APIRouter(
-    prefix="/purchases",
-    tags=["Purchases"],
-)
+router = APIRouter(prefix="/purchases", tags=["Purchases"])
 
 
-# -----------------------------
-# USER: створити покупку
-# -----------------------------
-@router.post(
-    "/",
-    response_model=PurchaseRead,
-    status_code=status.HTTP_201_CREATED,
-)
+# ---------------------------------------------------
+# CREATE PURCHASE (USER or ADMIN)
+# ---------------------------------------------------
+@router.post("/", response_model=PurchaseRead, status_code=status.HTTP_201_CREATED)
 def create_purchase(
     data: PurchaseCreate,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    data.user_id = current_user.id
-    return PurchaseService(db).create_purchase(data)
+    service = PurchaseService(db)
+    purchase, error = service.create_purchase(data, current_user)
+
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    return purchase
 
 
-# -----------------------------
-# USER: переглянути свої покупки
-# -----------------------------
-@router.get(
-    "/my",
-    response_model=list[PurchaseRead],
-)
+# ---------------------------------------------------
+# GET PURCHASES OF CURRENT USER
+# ---------------------------------------------------
+@router.get("/me", response_model=List[PurchaseData])
 def get_my_purchases(
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    return PurchaseService(db).get_by_user(current_user.id)
+    service = PurchaseService(db)
+    return service.get_user_purchases(current_user.id)
 
 
-# -----------------------------
-# ADMIN: переглянути всі покупки
-# -----------------------------
-@router.get(
-    "/",
-    response_model=list[PurchaseRead],
-    dependencies=[Depends(require_role("admin"))],
-)
+# ---------------------------------------------------
+# GET ALL PURCHASES (ADMIN)
+# ---------------------------------------------------
+@router.get("/", response_model=List[PurchaseRead], dependencies=[Depends(require_role("admin"))])
 def get_all_purchases(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    return PurchaseService(db).get_all()
+    service = PurchaseService(db)
+    return service.get_all()
 
 
-# -----------------------------
-# ADMIN: видалити покупку
-# -----------------------------
-@router.delete(
-    "/{purchase_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_role("admin"))],
-)
+# ---------------------------------------------------
+# UPDATE PURCHASE (ADMIN)
+# ---------------------------------------------------
+@router.put("/{purchase_id}", response_model=PurchaseRead, dependencies=[Depends(require_role("admin"))])
+def update_purchase(
+    purchase_id: int,
+    data: PurchaseUpdate,
+    db: Session = Depends(get_db)
+):
+    service = PurchaseService(db)
+    purchase, error = service.update_purchase(purchase_id, data)
+
+    if error:
+        raise HTTPException(status_code=404, detail=error)
+
+    return purchase
+
+
+# ---------------------------------------------------
+# DELETE PURCHASE (ADMIN)
+# ---------------------------------------------------
+@router.delete("/{purchase_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_role("admin"))])
 def delete_purchase(
     purchase_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    deleted = PurchaseService(db).delete_purchase(purchase_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Purchase not found",
-        )
+    service = PurchaseService(db)
+    deleted, error = service.delete_purchase(purchase_id)
+
+    if error:
+        raise HTTPException(status_code=404, detail=error)
+
     return None

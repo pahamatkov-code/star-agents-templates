@@ -1,104 +1,135 @@
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
 
-from app.models import Purchase, User, Agent
-from app.schemas.purchase import PurchaseCreate, PurchaseRead, PurchaseData
+from app.models.user import User
+from app.models.agent import Agent
+from app.models.purchase import Purchase
+from app.models.balance_transaction import BalanceTransaction
+
+from app.schemas.purchase import PurchaseCreate, PurchaseUpdate
 
 
 class PurchaseService:
     def __init__(self, db: Session):
         self.db = db
 
-    # ============================
-    # CREATE PURCHASE (atomic)
-    # ============================
-    def create_purchase(self, data: PurchaseCreate) -> Purchase:
+    # ---------------------------------------------------
+    # CREATE PURCHASE (user → тільки для себе, admin → для всіх)
+    # ---------------------------------------------------
+    def create_purchase(self, data: PurchaseCreate, current_user):
+        """
+        User може створювати покупку тільки для себе.
+        Admin може створювати покупку для будь-якого user_id.
+        """
+
+        # User може купувати тільки для себе
+        if current_user.role != "admin":
+            data.user_id = current_user.id
+
         # Перевіряємо користувача
         user = self.db.query(User).filter(User.id == data.user_id).first()
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            return None, "User not found"
 
         # Перевіряємо агента
         agent = self.db.query(Agent).filter(Agent.id == data.agent_id).first()
         if not agent:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Agent not found"
-            )
+            return None, "Agent not found"
 
-        # Перевірка балансу
-        if user.balance < agent.price:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Insufficient balance"
-            )
+        # Ціна агента
+        price = agent.price
+        if price <= 0:
+            return None, "Invalid agent price"
 
-        # Atomic: списуємо баланс і створюємо покупку
-        user.balance -= agent.price
+        # Перевірка балансу (тільки для user)
+        if current_user.role != "admin":
+            if user.balance < price:
+                return None, "Insufficient balance"
 
+        # -----------------------------------------
+        # Списання балансу (тільки для user)
+        # -----------------------------------------
+        if current_user.role != "admin":
+            user.balance -= price
+            self.db.commit()
+            self.db.refresh(user)
+
+        # -----------------------------------------
+        # Лог транзакції
+        # -----------------------------------------
+        transaction = BalanceTransaction(
+            user_id=user.id,
+            amount=-price,
+            type="purchase"
+        )
+        self.db.add(transaction)
+        self.db.commit()
+        self.db.refresh(transaction)
+
+        # -----------------------------------------
+        # Створення покупки
+        # -----------------------------------------
         purchase = Purchase(
             user_id=user.id,
             agent_id=agent.id,
-            price=agent.price,  # важливо: ціна на момент покупки
+            price=price
         )
 
         self.db.add(purchase)
         self.db.commit()
         self.db.refresh(purchase)
 
-        return purchase
+        return purchase, None
 
-    # ============================
-    # USER: get own purchases
-    # ============================
-    def get_purchases_by_user(self, user_id: int):
-        purchases = (
-            self.db.query(Purchase)
-            .filter(Purchase.user_id == user_id)
-            .order_by(Purchase.created_at.desc())
-            .all()
-        )
-
-        result = []
-        for p in purchases:
-            result.append(
-                PurchaseData(
-                    id=p.id,
-                    agent_id=p.agent_id,
-                    price=p.price,
-                    created_at=p.created_at,
-                    agent_name=p.agent.name if p.agent else None,
-                    agent_role=p.agent.role if p.agent else None,
-                )
-            )
-        return result
-
-    # ============================
-    # ADMIN: get all purchases
-    # ============================
-    def get_all_purchases(self):
+    # ---------------------------------------------------
+    # GET PURCHASE BY ID
+    # ---------------------------------------------------
+    def get_purchase(self, purchase_id: int):
         return (
-            self.db.query(Purchase)
-            .order_by(Purchase.created_at.desc())
-            .all()
-        )
-
-    # ============================
-    # ADMIN: delete purchase
-    # ============================
-    def delete_purchase(self, purchase_id: int) -> bool:
-        purchase = (
             self.db.query(Purchase)
             .filter(Purchase.id == purchase_id)
             .first()
         )
 
+    # ---------------------------------------------------
+    # GET ALL PURCHASES (admin)
+    # ---------------------------------------------------
+    def get_all(self):
+        return self.db.query(Purchase).all()
+
+    # ---------------------------------------------------
+    # GET PURCHASES OF CURRENT USER
+    # ---------------------------------------------------
+    def get_user_purchases(self, user_id: int):
+        return (
+            self.db.query(Purchase)
+            .filter(Purchase.user_id == user_id)
+            .all()
+        )
+
+    # ---------------------------------------------------
+    # UPDATE PURCHASE (admin only)
+    # ---------------------------------------------------
+    def update_purchase(self, purchase_id: int, data: PurchaseUpdate):
+        purchase = self.get_purchase(purchase_id)
         if not purchase:
-            return False
+            return None, "Purchase not found"
+
+        update_data = data.dict(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(purchase, key, value)
+
+        self.db.commit()
+        self.db.refresh(purchase)
+        return purchase, None
+
+    # ---------------------------------------------------
+    # DELETE PURCHASE (admin only)
+    # ---------------------------------------------------
+    def delete_purchase(self, purchase_id: int):
+        purchase = self.get_purchase(purchase_id)
+        if not purchase:
+            return None, "Purchase not found"
 
         self.db.delete(purchase)
         self.db.commit()
-        return True
+        return True, None

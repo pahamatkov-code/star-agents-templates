@@ -1,81 +1,94 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
 
-from app.database import SessionLocal
-from app.models import User
+from app.db.session import get_db
 from app.schemas.auth import LoginRequest, TokenPair, RefreshRequest
-from app.core.security import verify_password, create_access_token, create_refresh_token
-from app.core.config import settings
-
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+)
+from app.services.user_service import UserService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-# -----------------------------
-# DB dependency
-# -----------------------------
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# ---------------------------
+# REGISTER
+# ---------------------------
+@router.post("/register", response_model=dict)
+def register_user(data: LoginRequest, db: Session = Depends(get_db)):
+    user_service = UserService(db)
 
-
-# -----------------------------
-# LOGIN
-# -----------------------------
-@router.post("/login", response_model=TokenPair)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == payload.email).first()
-
-    if not user or not verify_password(payload.password, user.hashed_password):
+    existing = user_service.get_by_email(data.email)
+    if existing:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User with this email already exists",
         )
 
-    access = create_access_token(user.id, user.role)
-    refresh = create_refresh_token(user.id, user.role)
+    hashed_password = get_password_hash(data.password)
+    user = user_service.create_user(
+        email=data.email,
+        hashed_password=hashed_password,
+        role="user",
+    )
+
+    return {"message": "User registered successfully", "user_id": user.id}
+
+
+# ---------------------------
+# LOGIN
+# ---------------------------
+@router.post("/login", response_model=TokenPair)
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    user_service = UserService(db)
+
+    user = user_service.get_by_email(form_data.username)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid email or password")
+
+    if not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Invalid email or password")
+
+    access_token = create_access_token(user_id=user.id, role=user.role)
+    refresh_token = create_refresh_token(user_id=user.id, role=user.role)
 
     return TokenPair(
-        access_token=access,
-        refresh_token=refresh,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
     )
 
 
-# -----------------------------
-# REFRESH TOKENS
-# -----------------------------
+# ---------------------------
+# REFRESH TOKEN
+# ---------------------------
 @router.post("/refresh", response_model=TokenPair)
-def refresh_tokens(body: RefreshRequest):
-    try:
-        payload = jwt.decode(
-            body.refresh_token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM],
-        )
+def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
+    payload = decode_token(data.refresh_token)
+    if not payload or payload.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-        if payload.get("type") != "refresh":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token type",
-            )
+    user_id = int(payload.get("sub"))
+    role = payload.get("role")
 
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-        )
+    user_service = UserService(db)
+    user = user_service.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    user_id = int(payload["sub"])
-    role = payload["role"]
-
-    new_access = create_access_token(user_id, role)
-    new_refresh = create_refresh_token(user_id, role)
+    new_access = create_access_token(user_id=user.id, role=user.role)
+    new_refresh = create_refresh_token(user_id=user.id, role=user.role)
 
     return TokenPair(
         access_token=new_access,
         refresh_token=new_refresh,
+        token_type="bearer",
     )

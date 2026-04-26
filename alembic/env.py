@@ -12,7 +12,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(BASE_DIR)
 
 # ---------------------------------------------------------
-# Імпортуємо Base з усіма моделями
+# Імпортуємо Base, який імпортує ВСІ моделі
 # ---------------------------------------------------------
 from app.db.base import Base
 
@@ -27,6 +27,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+# ---------------------------------------------------------
+# OFFLINE MODE
+# ---------------------------------------------------------
 def run_migrations_offline():
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -40,6 +43,9 @@ def run_migrations_offline():
         context.run_migrations()
 
 
+# ---------------------------------------------------------
+# ONLINE MODE
+# ---------------------------------------------------------
 def run_migrations_online():
     connectable = engine_from_config(
         config.get_section(config.config_ini_section),
@@ -57,6 +63,9 @@ def run_migrations_online():
             context.run_migrations()
 
 
+# ---------------------------------------------------------
+# RUN
+# ---------------------------------------------------------
 if context.is_offline_mode():
     run_migrations_offline()
 else:

@@ -12,11 +12,12 @@ app = FastAPI(
     title="Star Agents API",
     version="1.0.0",
     description="API для керування користувачами, агентами, покупками та балансом",
-    debug=settings.DEBUG
+    debug=settings.DEBUG,
 )
 
 # === STATIC FILES ===
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+# ВАЖЛИВО: використовуємо кореневу папку "static"
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # === API ROUTERS ===
 from app.api.v1.auth import router as auth_router
@@ -25,7 +26,7 @@ from app.api.v1.agents import router as agents_router
 from app.api.v1.purchases import router as purchases_router
 from app.api.v1.balance import router as balance_router
 from app.api.v1.analytics import router as analytics_router
-from app.api.v1.seed import router as seed_router   # <-- seed тут
+from app.api.v1.seed import router as seed_router
 
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -33,9 +34,9 @@ app.include_router(agents_router)
 app.include_router(purchases_router)
 app.include_router(balance_router)
 app.include_router(analytics_router)
-app.include_router(seed_router)   # <-- і тут
+app.include_router(seed_router)
 
-# === Jinja2 templates ===
+# === Jinja2 templates (якщо будеш використовувати) ===
 templates = Jinja2Templates(directory="templates")
 
 # === SYSTEM ROUTES ===
@@ -44,6 +45,8 @@ def health():
     return {"status": "ok", "debug": settings.DEBUG}
 
 # === FRONTEND ROUTES ===
+
+# Лендінг / логін (старий login.html)
 @app.get("/", response_class=HTMLResponse)
 def landing_page():
     return FileResponse("static/login.html")
@@ -59,6 +62,11 @@ def agents_page():
 @app.get("/purchases", response_class=HTMLResponse)
 def purchases_page():
     return FileResponse("static/purchases.html")
+
+# Адмін-дешборд (твій admin_dashboard_v10.html)
+@app.get("/admin", response_class=HTMLResponse)
+def admin_dashboard():
+    return FileResponse("static/admin_dashboard_v10.html")
 
 # === Upload ===
 @app.post("/upload")
